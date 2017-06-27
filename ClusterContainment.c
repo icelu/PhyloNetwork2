@@ -930,6 +930,7 @@ void Find_UnStable(struct arb_tnode *comp_ptr, int input_leaves[], int no_leaf,
 		else if (node_type[comp_ptr->label] == RET) {
 			if (inner_flag[comp_ptr->label] == CROSS) {
 				int leaf = lf_below[comp_ptr->label];
+				if (leaf==-2) return;
 				if (Is_In(leaf, input_leaves, no_leaf) == 1) {
 					unstb_rets_in[*no_rets_in] = comp_ptr->label;
 					*no_rets_in = *no_rets_in + 1;
