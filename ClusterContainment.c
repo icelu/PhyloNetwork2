@@ -1,8 +1,11 @@
 /* Copyright:  Bingxin Lu, National University of Singapore, 2016
+ *
  * This is a program for determining whether or not a subset of network leaves
  * is a soft cluster in a phylogenetic network.
+ *
  * The input to the program includes a subset of network leaves and a phylogenetic
  * network.
+ *
  * The input network has the following property:
  *   -- each tree node has an indegree of 1;
  *   -- each reticulation node must an out-degree 1;
@@ -10,11 +13,13 @@
  *
  *   The compiling command:  gcc -o ccp ClusterContainment.c
  *   The run command:        ./ccp <network_file_name> <leave_file_name>
+ *
  *   The leaves is represented as a list of nodes, each on
  *   a line. For example, this is a file of the input leaves
  *   leaf2
  *   leaf3
  *   leaf4
+ *
  *   The network is represented as a set of edges, each on
  *   a line. For example, this is a file of the input network
  *      1 2
@@ -27,11 +32,13 @@
  *      5 leaf2
  *      5 leaf3
  *      4 leaf4
+ *
  *  Another important assumption is that
  *  the network has 350 nodes and 500 edges at most and each node
  *  has at most degree 20. But this can be adjusted by
  *  resetting constants MAXDEGREE, MAXSIZE and MAXEDGE
  */
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -1244,6 +1251,7 @@ void Modify_Cross_Ret(int n_r, int lf_below[], int r_nodes[], int no_opt,
 					/*					printf(
 					 "The optional leaf is in the cluster. delete edges incoming from other components.\n");*/
 					Modify2(p->next, node_type, r_nodes[i]);
+					// printf("Replace reticulation node %s by null, orig: %s \n", node_strings[r_nodes[i]], node_strings[lf_below[r_nodes[i]]]);
 					lf_below[r_nodes[i]] = -2;
 				} else if (in_cluster[x] == 0) {
 					/*					printf(
@@ -1269,6 +1277,7 @@ void Modify_Cross_Ret1(int n_r, int lf_below[], int r_nodes[], int no_opt,
 				/*				printf(
 				 "The optional leaf is not in the cluster. delete edges incoming from the other component.\n");*/
 				Modify2(p->next, node_type, r_nodes[i]);
+				// printf("Replace reticulation node %s by null, orig: %s \n", node_strings[r_nodes[i]], node_strings[lf_below[r_nodes[i]]]);
 				lf_below[r_nodes[i]] = -2;
 			} else if (in_cluster[x] == 1) {
 				/*				printf(
@@ -1296,6 +1305,7 @@ int Cluster_Containment(struct components *ptr, int r_nodes[], int n_r,
 	struct components *p, *p_copy;
 	struct components *p1, *whole_copy;
 	int unstb_ret;
+	// copy of no1
 	int no1_1;
 	int res, is_cluster, num_inleaf, count_in, count_out;
 
@@ -1303,59 +1313,36 @@ int Cluster_Containment(struct components *ptr, int r_nodes[], int n_r,
 	if (p == NULL)
 		return 0;
 
-	// Find the number of ret node below the comp
-	int no_rnode = p->size - p->no_tree_node;
+	// // Find the number of ret node below the comp
+	// int no_rnode = p->size - p->no_tree_node;
+
+	// printf("\n**********************\ncurrent ret node %s\n", node_strings[p->ret_node]);
+	// printf("\nCurrent input leaves\n   ");
+	// for (i = 0; i < no1; i++) {
+	// 	printf("%s(%d) ", node_strings[input_leaves[i]], input_leaves[i]);
+	// }
+	// printf("\n");
+	//
+	// printf("Current component\n   ");
+	// Print_Comp_Revised(p->tree_com, node_strings);
+  // printf("\n");
+	//
+	// printf("Current leaves below each component\n   ");
+	// for (i = 0; i < n_r; i++) {
+	// 	printf("%s(%s) ", node_strings[lf_below[r_nodes[i]]], node_strings[r_nodes[i]]);
+	// }
+	// printf("\n");
 
 	if (p->tree_com == NULL) {
+		// printf("\n== p->tree_com is null. \n");
 		Modify2(p->next, node_type, p->ret_node);
 		return Cluster_Containment(p->next, r_nodes, n_r, no_nodes, node_type,
 				inner_flag, lf_below, node_strings, no1, input_leaves,
 				in_cluster, super_deg, cps, child_array, n_l, no_break);
 	}
-	else if (p->no_tree_node == 1 && no_rnode == 1 && inner_flag[p->tree_com->child[0]->label]==INNER ){
-		// for component with only one tree node
-		// The single tree node in the current componet
-		int tnode = p->tree_com->label;
-		int rnode = p->tree_com->child[0]->label;
-		int leaf = lf_below[rnode];
-		if (no1 == 1 && input_leaves[0] == leaf) {
-			printf("The input leaves is the soft cluster of node %s : \n",
-					node_strings[tnode]);
-			Print_Final_Tree(cps, node_type, child_array, node_strings);
-			printf("\n\n\n The no. of rets eliminated: %d\n", *no_break);
-			return 50;
-		}
-		else{
-			// Replace the current ret node the leaf below it
-			lf_below[p->ret_node] = leaf;
-			return Cluster_Containment(p->next, r_nodes, n_r, no_nodes,
-					node_type, inner_flag, lf_below, node_strings, no1,
-					input_leaves, in_cluster, super_deg, cps, child_array, n_l,
-					no_break);
-		}
-	}
-	else if (p->no_tree_node == 0 && p->size == 1 && inner_flag[p->tree_com->label]==INNER ){
-		// for two adjacent reticulation nodes
-		int rnode = p->tree_com->label;
-		int leaf = lf_below[rnode];
-		if (no1 == 1 && input_leaves[0] == leaf) {
-			printf("The input leaves is the soft cluster of node %s : \n",
-					node_strings[rnode]);
-			Print_Final_Tree(cps, node_type, child_array, node_strings);
-			printf("\n\n\n The no. of rets eliminated: %d\n", *no_break);
-			return 50;
-		}
-		else{
-			// Replace the current ret node the leaf below it
-			lf_below[p->ret_node] = leaf;
-			return Cluster_Containment(p->next, r_nodes, n_r, no_nodes,
-					node_type, inner_flag, lf_below, node_strings, no1,
-					input_leaves, in_cluster, super_deg, cps, child_array, n_l,
-					no_break);
-		}
-	}
 	else if (Is_Stable(p->tree_com, node_type, inner_flag, lf_below) == 1) {
-		// printf("\n== Stable case: \n");
+		printf("\n== Stable case: \n");
+
 		struct arb_tnode* postList[2 * no_nodes];
 		no = 0;
 		PostTrans_Revised(p->tree_com, postList, &no);
@@ -1384,6 +1371,21 @@ int Cluster_Containment(struct components *ptr, int r_nodes[], int n_r,
 				}
 			}
 		}
+
+		// printf("stable leaves below current component:\n");
+		// for (i = 0; i < no_slf; i++)
+		// 	printf("%s; ", node_strings[sleaves[i]]);
+		// printf("\n");
+		//
+		// printf("optional leaves below current component:\n");
+		// for (i = 0; i < no_opt; i++)
+		// 	printf("%s; ", node_strings[optional[i]]);
+		// printf("\n");
+		//
+		// printf("ambiguous leaves below current component:\n");
+		// for (i = 0; i < no_ambig; i++)
+		// 	printf("%s; ", node_strings[ambig[i]]);
+		// printf("\n");
 
 		if (no_slf > 0) {
 			/* mark nodes and find Vmax */
@@ -1421,20 +1423,30 @@ int Cluster_Containment(struct components *ptr, int r_nodes[], int n_r,
 				/* remove edges entering CR(C) for visualization */
 				Modify_Cross_Ret(n_r, lf_below, r_nodes, no_opt, node_type,
 						optional, node_strings, in_cluster, p);
-				printf("The input leaves is the soft cluster of node %s : \n",
+				printf("The input is the soft cluster of node: %s\n",
 						node_strings[is_cluster]);
 				Print_Final_Tree(cps, node_type, child_array, node_strings);
 				printf("\n\n\n The no. of rets eliminated: %d\n", *no_break);
 				return 50;
 			} else {
 				/* use one stable leaf to replace the current component */
-				if (node_type[p->ret_node] != ROOT  && (no_slf + no_opt > 1)){
+				if (node_type[p->ret_node] != ROOT){
 					for (i = 0; i < n_r; i++) {
-						if (lf_below[r_nodes[i]] == sleaves[0])
+						if (lf_below[r_nodes[i]] == sleaves[0]){
+							// printf("Replace reticulation node %s by null, orig: %s \n", node_strings[r_nodes[i]], node_strings[lf_below[r_nodes[i]]]);
 							lf_below[r_nodes[i]] = -2;
+						}
 					}
 					lf_below[p->ret_node] = sleaves[0];
+					// printf("Replace reticulation node %s by %s\n", node_strings[p->ret_node], node_strings[sleaves[0]]);
 				}
+
+				// printf("leaf_below: post-order:\n");
+				// for (i = 0; i < n_r; i++)
+				// 	printf("%s: %s, %d; ", node_strings[r_nodes[i]], node_strings[lf_below[r_nodes[i]]],
+				// 			inner_flag[r_nodes[i]]);
+				// printf("\n");
+
 				count_out = 0;
 				count_in = 0;
 				for (i = 0; i < no_slf; i++) {
@@ -1447,6 +1459,7 @@ int Cluster_Containment(struct components *ptr, int r_nodes[], int n_r,
 
 				/* L and B are disjoint */
 				if (count_out == no_slf) {
+					// printf("L and B are disjoint.\n");
 					Modify_Cross_Ret1(n_r, lf_below, r_nodes, no_opt, node_type,
 							optional, node_strings, in_cluster, p);
 					res = Cluster_Containment(p->next, r_nodes, n_r, no_nodes,
@@ -1459,6 +1472,7 @@ int Cluster_Containment(struct components *ptr, int r_nodes[], int n_r,
 				/* L and notB are disjoint */
 				else if (count_in == no_slf) {
 					/* check whether B^==B */
+					// printf("L and notB are disjoint.\n");
 					num_inleaf = 0;
 					for (i = 0; i < no_slf; i++) {
 						if (in_cluster[sleaves[i]] == 1)
@@ -1474,7 +1488,7 @@ int Cluster_Containment(struct components *ptr, int r_nodes[], int n_r,
 						Modify_Cross_Ret(n_r, lf_below, r_nodes, no_opt,
 								node_type, optional, node_strings, in_cluster,
 								p);
-						printf("The input is the soft cluster of node %s : \n",
+						printf("The input is the soft cluster of node: %s\n",
 								node_strings[p->tree_com->label]);
 						Print_Final_Tree(cps, node_type, child_array,
 								node_strings);
@@ -1524,6 +1538,7 @@ int Cluster_Containment(struct components *ptr, int r_nodes[], int n_r,
 				}
 				/* L intersects with both B and notB */
 				else {
+					// printf("L intersects with both B and notB.\n");
 					return 0;
 				}
 			}
@@ -1532,6 +1547,7 @@ int Cluster_Containment(struct components *ptr, int r_nodes[], int n_r,
 			}
 		} else {
 			//  Empty Component
+			// printf("\n== Empty Component.\n");
 			Rebuilt_Component(p->tree_com, rpl_comp, node_type, node_strings);
 			unstb_ret = p->tree_com->label;
 			Modify(p->next, NULL, node_type, unstb_ret);
@@ -1543,7 +1559,7 @@ int Cluster_Containment(struct components *ptr, int r_nodes[], int n_r,
 		}
 	}
 	else {
-		//  Unstable case
+		// printf("\n== Unstable case.\n");
 		int no_rets_in = 0;
 		int no_rets_out = 0;
 		int no_in_lfb = 0;
@@ -1558,16 +1574,18 @@ int Cluster_Containment(struct components *ptr, int r_nodes[], int n_r,
 				&no_rets_in, unstb_rets_out, &no_rets_out, node_type,
 				inner_flag, lf_below, lf_in_comp, &no_in_lfb, lf_out_comp, &no_out_lfb);
 
+		// printf("   no_rets_in: %d; no_rets_out: %d\n", no_rets_in, no_rets_out);
+
 		// check whether leaves below current component equals to B
-		if(no_rets_in == no1){
-			printf("The input leaves is the soft cluster of node %s : \n",
+		if(no_in_lfb == no1){
+			printf("The input is the soft cluster of node: %s\n",
 					node_strings[p->tree_com->label]);
 			Print_Final_Tree(cps, node_type, child_array, node_strings);
 			printf("\n\n\n The no. of rets eliminated: %d\n", *no_break);
 			return 50;
 		}
 
-		if (no_rets_in > 0 || no_rets_out > 0) {
+		if (no_rets_in > 0 || no_rets_out > 0){
 			struct components network[n_r + 1];
 			int tree_size = 0;
 			p1 = cps;
@@ -1623,6 +1641,13 @@ int Cluster_Containment(struct components *ptr, int r_nodes[], int n_r,
 			}
 
 			*no_break = *no_break + 1;
+			// printf("split branch1----------\n");
+			// printf("  Split network 1:\n");
+			// printf("current ret node %s\n", node_strings[p->ret_node]);
+			// Print_Comp_Revised(p->tree_com, node_strings);
+			// printf("comp size: %d, no of tree node: %d, no_in_lfb: %d\n", p->size,
+			// 		p->no_tree_node, no_in_lfb);
+
 			/* copy data for spliting */
 			int input_leaves_orig[no1];
 			int in_cluster_orig[n_l];
@@ -1637,10 +1662,18 @@ int Cluster_Containment(struct components *ptr, int r_nodes[], int n_r,
 			if(no_in_lfb > 0){
 				/* replace the current component by a single leaf */
 				for (i = 0; i < n_r; i++) {
-					if (lf_below[r_nodes[i]] == lf_in_comp[0])
+					if (lf_below[r_nodes[i]] == lf_in_comp[0]){
+						// printf("Replace reticulation node %s by null, orig: %s \n", node_strings[r_nodes[i]], node_strings[lf_below[r_nodes[i]]]);
 						lf_below[r_nodes[i]] = -2;
+					}
 				}
+				// printf("Replace reticulation node %s by %s\n", node_strings[p->ret_node], node_strings[lf_in_comp[0]]);
 				lf_below[p->ret_node] = lf_in_comp[0];
+
+				// Exclude cross-reticulation nodes whose visible leaves are in the input
+				for (i = 0; i < no_rets_in; i++) {
+					lf_below[unstb_rets_in[i]] = -2;
+				}
 			}
 			if(no_in_lfb > 1){
 				/* decrease B */
@@ -1675,6 +1708,13 @@ int Cluster_Containment(struct components *ptr, int r_nodes[], int n_r,
 			}
 
 			if (res == 0) {
+				// printf("split branch2----------\n");
+				// printf("  Split network 2:\n");
+				// printf("current ret node %s\n", node_strings[p1->ret_node]);
+				// Print_Comp_Revised(p1->tree_com, node_strings);
+				// printf("comp size: %d, no of tree node: %d, no_out_lfb: %d\n", p1->size,
+				// 		p1->no_tree_node, no_out_lfb);
+
 				for (i = 0; i < no_rets_in; i++) {
 					unstb_ret = unstb_rets_in[i];
 					if (super_deg1[unstb_ret] == 1)
@@ -1691,21 +1731,31 @@ int Cluster_Containment(struct components *ptr, int r_nodes[], int n_r,
 						inner_flag1[unstb_ret] = CROSS;
 				}
 
-				// simplify the current component
 				if(no_out_lfb > 0){
+					/* replace the current component by a single leaf */
 					for (i = 0; i < n_r; i++) {
-						if (lf_below1[r_nodes[i]] == lf_out_comp[0])
+						if (lf_below1[r_nodes[i]] == lf_out_comp[0]){
+								// printf("Replace reticulation node %s by null, orig: %s \n", node_strings[r_nodes[i]], node_strings[lf_below1[r_nodes[i]]]);
 							lf_below1[r_nodes[i]] = -2;
+						}
 					}
+					// printf("Replace reticulation node %s by %s\n", node_strings[p1->ret_node], node_strings[lf_out_comp[0]]);
 					lf_below1[p1->ret_node] = lf_out_comp[0];
+
+					// Exclude cross-reticulation nodes whose visible leaves are not in the input
+					for (i = 0; i < no_rets_out; i++) {
+						lf_below1[unstb_rets_out[i]] = -2;
+					}
 				}
+
 				res = Cluster_Containment(p1->next, r_nodes, n_r, no_nodes, node_type,
-						inner_flag1, lf_below1, node_strings, no1_1,
-						input_leaves_orig, in_cluster_orig, super_deg1,
-						whole_copy, child_array, n_l, no_break);
+					inner_flag1, lf_below1, node_strings, no1_1,
+					input_leaves_orig, in_cluster_orig, super_deg1,
+					whole_copy, child_array, n_l, no_break);
 			}
 			return res;
-		} else {
+		}
+		else {
 			Modify2(p->next, node_type, p->ret_node);
 			return Cluster_Containment(p->next, r_nodes, n_r, no_nodes,
 					node_type, inner_flag, lf_below, node_strings, no1,
@@ -1749,7 +1799,7 @@ void main(int argc, char *argv[]) {
 	struct components *pcurr;
 
 	if (argc != 3) {
-		printf("Command: ./ccp network_file_name leaf_file_name\n");
+		printf("Command: PROGRAM(./ccp) network_file_name leaf_file_name\n");
 		exit(10);
 	}
 
@@ -1869,8 +1919,8 @@ void main(int argc, char *argv[]) {
 	}
 	printf("\n\n");
 
-	if (no1 == 1) {
-		printf("The input leaf is a trivial soft cluster. \n");
+	if (no1 == 1 || n_l == no1) {
+		printf("The input is a trivial soft cluster \n");
 		printf("\n\n\n The no. of rets eliminated: 0\n");
 		for (i = 0; i < no1; i++) {
 			free(leave_names[i]);
@@ -1965,8 +2015,8 @@ void main(int argc, char *argv[]) {
 					+ Is_In_Comp(p->tree_com, r_nodes[i]);
 		}
 
-		// Print_Comp_Revised(p->tree_com, node_strings);
-		// printf("---size %d--no_tree_node %d\n", p->size, p->no_tree_node);
+		Print_Comp_Revised(p->tree_com, node_strings);
+		printf("---size %d--no_tree_node %d\n", p->size, p->no_tree_node);
 
 		p = p->next;
 	}
