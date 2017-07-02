@@ -1,6 +1,9 @@
 /* Copyright:  Bingxin Lu, National University of Singapore, 2016
+ *
  * This is a program for computing the Soft Robinson-Foulds cluster distance between two phylogenetic networks.
+ *
  * The input to the program includes two phylogenetic networks.
+ *
  * The input network has the following property:
  *   -- each tree node has an indegree of 1;
  *   -- each reticulation node must an out-degree 1;
@@ -21,11 +24,13 @@
  *      5 leaf2
  *      5 leaf3
  *      4 leaf4
+ *
  *  Another important assumption is that
  * 	the network has 350 nodes and 500 edges at most and each node
  *  has at most degree 20. But this can be adjusted by
  *  resetting constants MAXDEGREE, MAXSIZE and MAXEDGE
  */
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -67,6 +72,8 @@ struct arb_tnode { /* arbitrary tree node */
 struct components {
 	int ret_node;
 	int inner;
+	int size;	// used for copying network with array
+	int no_tree_node; // used for checking degenerate case
 	struct arb_tnode *tree_com;
 	struct components *next;
 };
@@ -255,7 +262,49 @@ int Is_Child(int x, int y, struct lnode *child_array[]) {
 	return 0;
 }
 
+
 void Build_Comp_Revised(struct arb_tnode *p, struct lnode *child_array[],
+		int node_type[], int no_nodes, int *size, int *no_tree_node) {
+	int i, j;
+	struct tnode *x, *y;
+	struct lnode *qq;
+
+	if (p == NULL)
+		return;
+	if (node_type[p->label] == LEAVE){
+		return;
+	}
+	if (node_type[p->label] == RET)
+		return;
+
+	if (node_type[p->label] == TREE || node_type[p->label] == ROOT) {
+		p->no_children = Count_Child(child_array[p->label]);
+		qq = child_array[p->label];
+
+		for (i = 0; i < MAXDEGREE; i++)
+			(p->child)[i] = NULL;
+
+		for (i = 0; i < p->no_children; i++) {
+			// printf("node_type %d -- %d\n",qq->leaf, node_type[qq->leaf]);
+			if (RET != node_type[qq->leaf]) {
+				*no_tree_node += 1;
+			}
+			*size += 1;
+			(p->child)[i] = (struct arb_tnode *) malloc(
+					sizeof(struct arb_tnode));
+
+			((p->child)[i])->label = qq->leaf;
+			((p->child)[i])->flag = 0;
+			((p->child)[i])->no_children = 0;
+			qq = qq->next;
+			Build_Comp_Revised((p->child)[i], child_array, node_type, no_nodes,
+					size, no_tree_node);
+		}
+	}
+	return;
+}
+
+void Build_Comp_Revised0(struct arb_tnode *p, struct lnode *child_array[],
 		int node_type[], int no_nodes) {
 	int i, j;
 	struct tnode *x, *y;
@@ -282,11 +331,12 @@ void Build_Comp_Revised(struct arb_tnode *p, struct lnode *child_array[],
 			((p->child)[i])->flag = 0;
 			((p->child)[i])->no_children = 0;
 			qq = qq->next;
-			Build_Comp_Revised((p->child)[i], child_array, node_type, no_nodes);
+			Build_Comp_Revised0((p->child)[i], child_array, node_type, no_nodes);
 		}
 	}
 	return;
 }
+
 
 void Print_Revised(struct arb_tnode *tree, char *node_strings[]) {
 	int deg, i;
@@ -391,7 +441,7 @@ int Check_List(int list_a[], int no, int b) {
  check whether the set of input leaves is a cluster of some node a tree component
  */
 int DProgram_Revised(char *node_strings[], struct arb_tnode *super_t,
-		int n_embed, int **map_nodes, int vmax[], int no_vmax,
+		int n_embed, int map_nodes[][MAXSIZE], int vmax[], int no_vmax,
 		int input_leaves[], int node_type[]) {
 	int i, j, k, x;
 	struct arb_tnode *p;
@@ -427,7 +477,35 @@ int Check_Name(char *node_strings[], int no_nodes, char *str1) {
 	return -1;
 }
 
-void Add_Component(struct components *com_ptr, int ret, int child, int inn) {
+void Add_Component(struct components *com_ptr, int ret, int child, int inn, int node_type[]) {
+	struct components *p;
+	int k;
+
+	p = com_ptr;
+	while (p->next != NULL) {
+		p = p->next;
+	}
+
+	p->next = (struct components *) malloc(sizeof(struct components));
+	(p->next)->ret_node = ret;
+	(p->next)->inner = inn;
+	(p->next)->size = 1;
+	(p->next)->tree_com = (struct arb_tnode *) malloc(sizeof(struct arb_tnode));
+	((p->next)->tree_com)->label = child;
+	if(node_type[child]==RET){
+		(p->next)->no_tree_node = 0;
+	}else{
+		(p->next)->no_tree_node = 1;
+	}
+	((p->next)->tree_com)->no_children = 0;
+	((p->next)->tree_com)->flag = 0;
+	for (k = 0; k < MAXDEGREE; k++)
+		(((p->next)->tree_com)->child)[k] = NULL;
+	(p->next)->next = NULL;
+}
+
+
+void Add_Component0(struct components *com_ptr, int ret, int child, int inn) {
 	struct components *p;
 	int k;
 
@@ -991,34 +1069,41 @@ int Is_Stable(struct arb_tnode *comp_ptr, int node_type[], int inner_flag[],
 	}
 }
 
-void Find_UnStable(struct arb_tnode *comp_ptr,int input_leaves[], int no_leaf, int unstb_rets_in[], int *no_rets_in,
-		int unstb_rets_out[], int *no_rets_out, int node_type[], int inner_flag[],
-		int lf_below[]) {
-	int i, deg, x;
+/* lf_below_comp: the leaves below the component (to simply the component) */
+void Find_UnStable(struct arb_tnode *comp_ptr, int input_leaves[], int no_leaf,
+		int unstb_rets_in[], int *no_rets_in, int unstb_rets_out[],
+		int *no_rets_out, int node_type[], int inner_flag[], int lf_below[], int lf_in_comp[], int *no_in_lfb, int lf_out_comp[], int *no_out_lfb) {
+	int i, deg;
 
 	if (comp_ptr == NULL)
 		return;
 	else {
-		if (node_type[comp_ptr->label] == LEAVE)
+		if (node_type[comp_ptr->label] == LEAVE){ // should not occur, since the component is invisible
 			return;
+		}
 		else if (node_type[comp_ptr->label] == RET) {
-			if (inner_flag[comp_ptr->label] == CROSS){
+			if (inner_flag[comp_ptr->label] == CROSS) {
 				int leaf = lf_below[comp_ptr->label];
-				if (Is_In(leaf, input_leaves, no_leaf)==1){
-					unstb_rets_in[*no_rets_in]=comp_ptr->label;
-					*no_rets_in = *no_rets_in+1;
-				}
-				else{
-					unstb_rets_out[*no_rets_out]=comp_ptr->label;
-					*no_rets_out=*no_rets_out+1;
+				if (leaf == -2) return;
+				if (Is_In(leaf, input_leaves, no_leaf) == 1) {
+					unstb_rets_in[*no_rets_in] = comp_ptr->label;
+					*no_rets_in = *no_rets_in + 1;
+					lf_in_comp[*no_in_lfb] = leaf;
+					*no_in_lfb = *no_in_lfb + 1;
+				} else {
+					unstb_rets_out[*no_rets_out] = comp_ptr->label;
+					*no_rets_out = *no_rets_out + 1;
+					lf_out_comp[*no_out_lfb] = leaf;
+					*no_out_lfb = *no_out_lfb + 1;
 				}
 			}
 		} else if (node_type[comp_ptr->label] == TREE
 				|| node_type[comp_ptr->label] == ROOT) {
 			deg = comp_ptr->no_children;
 			for (i = 0; i < deg; i++) {
-				Find_UnStable((comp_ptr->child)[i], input_leaves, no_leaf, unstb_rets_in, no_rets_in, unstb_rets_out, no_rets_out, node_type, inner_flag,
-						lf_below);
+				Find_UnStable((comp_ptr->child)[i], input_leaves, no_leaf,
+						unstb_rets_in, no_rets_in, unstb_rets_out, no_rets_out,
+						node_type, inner_flag, lf_below, lf_in_comp, no_in_lfb, lf_out_comp, no_out_lfb);
 			}
 		}
 		return;
@@ -1026,37 +1111,73 @@ void Find_UnStable(struct arb_tnode *comp_ptr,int input_leaves[], int no_leaf, i
 }
 
 
-struct arb_tnode *Make_ArbTree_Copy(struct arb_tnode *tree) {
-	struct arb_tnode *ptr;
-	int i, deg;
+int Make_ArbTree_Copy(struct arb_tnode *src_tree, struct arb_tnode *dest_tree,
+		struct arb_tnode trees[], int *tree_index) {
+	int i, deg, res;
+	//printf("weird \n");
+	if (src_tree == NULL)
+		return 0;
 
-	if (tree == NULL)
-		return NULL;
-	ptr = (struct arb_tnode *) malloc(sizeof(struct arb_tnode));
-	if (ptr != NULL) {
-		ptr->label = tree->label;
-		ptr->flag = tree->flag;
-		deg = tree->no_children;
-		ptr->no_children = deg;
-		for (i = 0; i < deg; i++)
-			(ptr->child)[i] = Make_ArbTree_Copy((tree->child)[i]);
+	//printf("not null \n");
+	dest_tree->label = src_tree->label;
+	dest_tree->flag = src_tree->flag;
+	deg = src_tree->no_children;
+	dest_tree->no_children = deg;
+	//printf("deg %d\n", deg);
+	for (i = 0; i < deg; i++) {
+		struct arb_tnode *child = &trees[(*tree_index)];
+		*tree_index += 1;
+		res = Make_ArbTree_Copy((src_tree->child)[i], child, trees, tree_index);
+		if (res == 0) {
+			(dest_tree->child)[i] = NULL;
+		} else {
+			(dest_tree->child)[i] = child;
+		}
+		//printf("\ntree_index %d\n", *tree_index);
+
 	}
-	return ptr;
+	return 1;
 }
 
-struct components *Make_Current_Network(struct components *p) {
+
+void *Make_Current_Network(struct components *p, int no_comp,
+		struct components network[], struct arb_tnode trees[], int *tree_index) {
 	struct components *ptr;
+	int i, res;
 
 	if (p == NULL)
 		return NULL;
-	ptr = (struct components *) malloc(sizeof(struct components));
-	if (ptr != NULL) {
-		ptr->ret_node = p->ret_node;
-		ptr->inner = p->inner;
-		ptr->tree_com = Make_ArbTree_Copy(p->tree_com);
-		ptr->next = Make_Current_Network(p->next);
+	ptr = p;
+	i = 0;
+	while (ptr != NULL) {
+		//printf("i %d\n", i);
+		network[i].ret_node = ptr->ret_node;
+		network[i].inner = ptr->inner;
+		network[i].size = ptr->size;
+		network[i].no_tree_node = ptr->no_tree_node;
+		//printf("copy trees\n");
+		if (ptr->size == 0){
+			network[i].tree_com = NULL;
+		}
+		else{
+			network[i].tree_com = &trees[(*tree_index)];
+			*tree_index += 1;
+			//printf("tree_com label\n",network[i].tree_com->label);
+			res = Make_ArbTree_Copy(ptr->tree_com, network[i].tree_com, trees,
+					tree_index);
+			if (res == 0) {
+				network[i].tree_com = NULL;
+			}
+		}
+		if (i < no_comp - 1) {
+			network[i].next = &network[i + 1];
+		} else {
+			network[i].next = NULL;
+		}
+		//printf("when copying, ret node %d\n", ptr->ret_node);
+		ptr = ptr->next;
+		i += 1;
 	}
-	return ptr;
 }
 
 void Destroy_Arbtree(struct arb_tnode *tree) {
@@ -1090,7 +1211,8 @@ void Free_Lnodes(struct lnode* head) {
 	}
 }
 
-void Modify1(struct arb_tnode *p, int node_type[], int unstb_ret) {
+void Modify1(struct arb_tnode *p, int node_type[], int unstb_ret,
+		int *comp_size) {
 	struct arb_tnode *ptr;
 	int i, k, j, deg;
 	struct arb_tnode *tmp;
@@ -1107,11 +1229,12 @@ void Modify1(struct arb_tnode *p, int node_type[], int unstb_ret) {
 		for (i = 0; i < deg; i++) {
 			ptr = (p->child)[i];
 			if (ptr->label == unstb_ret) {
-				tmp = (p->child)[i];
-				Destroy_Arbtree(tmp);
+//				tmp = (p->child)[i];
+//				Destroy_Arbtree(tmp);
 				(p->child)[i] = NULL;
+				*comp_size = *comp_size - 1;
 			} else {
-				Modify1((p->child)[i], node_type, unstb_ret);
+				Modify1((p->child)[i], node_type, unstb_ret, comp_size);
 			}
 		}
 
@@ -1135,6 +1258,7 @@ void Modify1(struct arb_tnode *p, int node_type[], int unstb_ret) {
 	}
 }
 
+
 void Modify2(struct components *p, int node_type[], int x) {
 	struct components *p_copy;
 
@@ -1142,30 +1266,35 @@ void Modify2(struct components *p, int node_type[], int x) {
 		p_copy = p;
 		while (p_copy != NULL) {
 			if (p_copy->tree_com != NULL)
-				Modify1(p_copy->tree_com, node_type, x);
+				Modify1(p_copy->tree_com, node_type, x, &p_copy->size);
 			p_copy = p_copy->next;
 		}
 	}
 }
 
+/*
+ *	For network pointed by p, remove all parents of unstb_ret in other components. (The size of these other components reduce by 1)
+ * For network pointed by p1, exclude current component from new network. (The size of current component reduce by 1)
+ */
 void Modify(struct components *p, struct components *p1, int node_type[],
 		int unstb_ret) {
 	struct components *ptr;
-	struct arb_tnode *tmp;
+	//struct arb_tnode *tmp;
 
 	if (p == NULL)
 		return;
 
 	ptr = p->next;
 	while (ptr != NULL) {
-
 		if (ptr->tree_com != NULL) {
 			if ((ptr->tree_com)->label == unstb_ret) {
-				tmp = ptr->tree_com;
-				Destroy_Arbtree(tmp);
+				//tmp = ptr->tree_com;
+				//Destroy_Arbtree(tmp);
 				ptr->tree_com = NULL;
+				ptr->size = ptr->size - 1;
 			} else {
-				Modify1(ptr->tree_com, node_type, unstb_ret);
+				// search the ret node recursively in the tree comp
+				Modify1(ptr->tree_com, node_type, unstb_ret, &ptr->size);
 			}
 		}
 		ptr = ptr->next;
@@ -1174,11 +1303,12 @@ void Modify(struct components *p, struct components *p1, int node_type[],
 	if (p1 == NULL || p1->tree_com == NULL)
 		return;
 	if ((p1->tree_com)->label == unstb_ret) {
-		tmp = p1->tree_com;
-		Destroy_Arbtree(tmp);
+		//tmp = p1->tree_com;
+		//Destroy_Arbtree(tmp);
 		p1->tree_com = NULL;
+		p1->size = p1->size - 1;
 	} else {
-		Modify1(p1->tree_com, node_type, unstb_ret);
+		Modify1(p1->tree_com, node_type, unstb_ret, &p1->size);
 	}
 }
 
@@ -1218,7 +1348,7 @@ void Rebuilt_Component(struct arb_tnode *tree, int *rpl_comp, int node_type[],
 			x = tree->label;
 			if (node_type[x] == LEAVE) {
 				/* the leaf is used to replace ret node */
-				if (rpl_comp[x] != -1) {
+				if (rpl_comp[x] >= 0) {
 					/* y is the child of tree->label, parent of x */
 					y = rpl_comp[x];
 					tree->label = y;
@@ -1274,7 +1404,7 @@ void Modify_Cross_Ret(int n_r, int lf_below[], int r_nodes[], int no_opt,
 					Modify2(p->next, node_type, r_nodes[i]);
 					lf_below[r_nodes[i]] = -2;
 				} else if (in_cluster[x] == 0) {
-					Modify1(p->tree_com, node_type, r_nodes[i]);
+					Modify1(p->tree_com, node_type, r_nodes[i], &p->size);
 				}
 			}
 		}
@@ -1292,7 +1422,7 @@ void Modify_Cross_Ret1(int n_r, int lf_below[], int r_nodes[], int no_opt,
 				Modify2(p->next, node_type, r_nodes[i]);
 				lf_below[r_nodes[i]] = -2;
 			} else if (in_cluster[x] == 1) {
-				Modify1(p->tree_com, node_type, r_nodes[i]);
+				Modify1(p->tree_com, node_type, r_nodes[i], &p->size);
 			}
 		}
 	}
@@ -1305,21 +1435,41 @@ int Cluster_Containment(struct components *ptr, int r_nodes[], int n_r,
 		int n_l, int *no_break) {
 	int i, j;
 	int no, no_slf, no_ambig, no_opt;
-	struct arb_tnode **postList;
-	int **map_nodes;
-	int *input_leaves1, *in_cluster1;
+
 	int nlf_kept; /* no. of leaves to keep in B */
-	int *vmax, no_vmax, no_mark;
-	int *sleaves, *ambig, *optional, *rpl_comp;
+	int no_vmax, no_mark;
+
 	struct components *p, *p_copy;
 	struct components *p1, *whole_copy;
-	int *inner_flag1, *lf_below1, *super_deg1, unstb_ret;
-	int *input_leaves_orig, *in_cluster_orig, no1_1;
+	int unstb_ret;
+	// copy of no1
+	int no1_1;
 	int res, is_cluster, num_inleaf, count_in, count_out;
+
+	// int no_rets_in, no_rets_out, no_in_lfb, no_out_lfb;
+	// int *unstb_rets_in, *unstb_rets_out, *lf_in_comp, *lf_out_comp;
 
 	p = ptr;
 	if (p == NULL)
 		return 0;
+
+	// printf("\n**********************\ncurrent ret node %s\n", node_strings[p->ret_node]);
+	// printf("\nCurrent input leaves\n   ");
+	// for (i = 0; i < no1; i++) {
+	// 	printf("%s(%d) ", node_strings[input_leaves[i]], input_leaves[i]);
+	// }
+	// printf("\n");
+	//
+	// printf("Current component\n   ");
+	// Print_Comp_Revised(p->tree_com, node_strings);
+  // printf("\n");
+	//
+	// printf("Current leaves below each component\n   ");
+	// for (i = 0; i < n_r; i++) {
+	// 	printf("%s(%s) ", node_strings[lf_below[r_nodes[i]]], node_strings[r_nodes[i]]);
+	// }
+	// printf("\n");
+
 
 	if (p->tree_com == NULL) {
 		Modify2(p->next, node_type, p->ret_node);
@@ -1329,19 +1479,16 @@ int Cluster_Containment(struct components *ptr, int r_nodes[], int n_r,
 	} else {
 		//printf("before checking stable\n");
 		if (Is_Stable(p->tree_com, node_type, inner_flag, lf_below) == 1) {
-			//printf("\n\n== Stable case: \n");
-			postList = (struct arb_tnode **) calloc(2 * no_nodes,
-					sizeof(struct arb_tnode*));
+			// printf("\n\n== Stable case: \n");
+
+			struct arb_tnode* postList[2 * no_nodes];
 			no = 0;
 			PostTrans_Revised(p->tree_com, postList, &no);
 
 			no_slf = 0;
 			no_ambig = 0;
 			no_opt = 0;
-			ambig = (int *) calloc(n_l, sizeof(int));
-			optional = (int *) calloc(n_l, sizeof(int));
-			sleaves = (int *) calloc(n_l, sizeof(int));
-			rpl_comp = (int *) calloc(n_l, sizeof(int));
+			int sleaves[n_l], ambig[n_l], optional[n_l], rpl_comp[n_l];
 			for (i = 0; i < n_l; i++) {
 				rpl_comp[i] = -1;
 			}
@@ -1382,7 +1529,7 @@ int Cluster_Containment(struct components *ptr, int r_nodes[], int n_r,
 					}
 				}
 
-				vmax = (int *) calloc(no, sizeof(int));
+				int vmax[no];
 				if (no_mark == 0) {
 					vmax[0] = p->tree_com->label;
 					no_vmax = 1;
@@ -1390,17 +1537,15 @@ int Cluster_Containment(struct components *ptr, int r_nodes[], int n_r,
 					Find_Vmax(p->tree_com, vmax, &no_vmax);
 				}
 
-				//printf("\n map_nodes \n");
-				map_nodes = (int **) calloc(no_vmax, sizeof(int*));
-				for (i = 0; i < no_vmax; i++) {
-					map_nodes[i] = (int *) calloc(no1, sizeof(int));
-				}
+				// printf("no_vmax: %d\n", no_vmax);
+				// printf("\n map_nodes \n");
+				int map_nodes[no_vmax][MAXSIZE];
 
-				//printf("\n run DP \n");
+				// printf("\n run DP \n");
 				is_cluster = DProgram_Revised(node_strings, p->tree_com, no1,
 						map_nodes, vmax, no_vmax, input_leaves, node_type);
 
-				//printf("\n rebuild component \n");
+				// printf("\n rebuild component \n");
 				Rebuilt_Component(p->tree_com, rpl_comp, node_type,
 						node_strings);
 
@@ -1408,17 +1553,6 @@ int Cluster_Containment(struct components *ptr, int r_nodes[], int n_r,
 					/* remove edges entering CR(C) for visualization */
 					Modify_Cross_Ret(n_r, lf_below, r_nodes, no_opt, node_type,
 							optional, node_strings, in_cluster, p);
-
-					for (i = 0; i < no_vmax; i++) {
-						free(map_nodes[i]);
-					}
-					free(map_nodes);
-					free(postList);
-					free(ambig);
-					free(sleaves);
-					free(optional);
-					free(vmax);
-					free(rpl_comp);
 
 					return 50;
 				} else {
@@ -1441,7 +1575,7 @@ int Cluster_Containment(struct components *ptr, int r_nodes[], int n_r,
 
 					/* L and B are disjoint */
 					if (count_out == no_slf) {
-						//printf("L and B are disjoint.\n");
+						// printf("L and B are disjoint.\n");
 						Modify_Cross_Ret1(n_r, lf_below, r_nodes, no_opt,
 								node_type, optional, node_strings, in_cluster,
 								p);
@@ -1450,21 +1584,11 @@ int Cluster_Containment(struct components *ptr, int r_nodes[], int n_r,
 								node_strings, no1, input_leaves, in_cluster,
 								super_deg, cps, child_array, n_l, no_break);
 
-						for (i = 0; i < no_vmax; i++) {
-							free(map_nodes[i]);
-						}
-						free(map_nodes);
-						free(postList);
-						free(ambig);
-						free(sleaves);
-						free(optional);
-						free(vmax);
-						free(rpl_comp);
 						return res;
 					}
 					/* L and notB are disjoint */
 					else if (count_in == no_slf) {
-						//printf("L and notB are disjoint.\n");
+						// printf("L and notB are disjoint.\n");
 						/* check whether B^==B */
 						num_inleaf = 0;
 						for (i = 0; i < no_slf; i++) {
@@ -1477,23 +1601,11 @@ int Cluster_Containment(struct components *ptr, int r_nodes[], int n_r,
 						}
 
 						if (num_inleaf == no1) {
-							//printf("B^==B.\n");
+							// printf("B^==B.\n");
 							/* remove edges related to CR(C) */
 							Modify_Cross_Ret(n_r, lf_below, r_nodes, no_opt,
 									node_type, optional, node_strings,
 									in_cluster, p);
-
-							for (i = 0; i < no_vmax; i++) {
-								free(map_nodes[i]);
-
-							}
-							free(map_nodes);
-							free(postList);
-							free(ambig);
-							free(sleaves);
-							free(optional);
-							free(vmax);
-							free(rpl_comp);
 
 							return 50;
 						}
@@ -1503,7 +1615,7 @@ int Cluster_Containment(struct components *ptr, int r_nodes[], int n_r,
 								p);
 
 						/* decrease B */
-						input_leaves1 = (int *) calloc(no1, sizeof(int));
+						int input_leaves1[no1];
 						nlf_kept = 0;
 						for (i = 0; i < no1; i++) {
 							if (Is_In(input_leaves[i], sleaves, no_slf) == -1
@@ -1511,13 +1623,12 @@ int Cluster_Containment(struct components *ptr, int r_nodes[], int n_r,
 											== -1) {
 								input_leaves1[nlf_kept++] = input_leaves[i];
 							}
-
 						}
 						input_leaves1[nlf_kept++] = sleaves[0];
 						no1 = nlf_kept;
 
 						/* revise in_cluster */
-						in_cluster1 = (int *) calloc(n_l, sizeof(int));
+						int in_cluster1[n_l];
 						for (i = 0; i < n_l; i++) {
 							in_cluster1[i] = in_cluster[i];
 							if (Is_In(i, input_leaves1, no1) == -1) {
@@ -1530,56 +1641,20 @@ int Cluster_Containment(struct components *ptr, int r_nodes[], int n_r,
 								node_strings, no1, input_leaves1, in_cluster1,
 								super_deg, cps, child_array, n_l, no_break);
 
-						for (i = 0; i < no_vmax; i++) {
-							free(map_nodes[i]);
-						}
-						free(map_nodes);
-						free(input_leaves1);
-						free(in_cluster1);
-						free(postList);
-						free(ambig);
-						free(sleaves);
-						free(optional);
-						free(vmax);
-						free(rpl_comp);
-
 						return res;
 					}
 					/* L intersects with both B and notB */
 					else {
-						//printf("L intersects with both B and notB\n");
-						for (i = 0; i < no_vmax; i++) {
-							free(map_nodes[i]);
-						}
-						free(map_nodes);
-						free(postList);
-						free(ambig);
-						free(sleaves);
-						free(optional);
-						free(vmax);
-						free(rpl_comp);
-
+						// printf("L intersects with both B and notB\n");
 						return 0;
 					}
 				}
 				if (p->next == NULL) {
-					//printf(" p->next is null. \n");
-
-					for (i = 0; i < no_vmax; i++) {
-						free(map_nodes[i]);
-					}
-					free(map_nodes);
-					free(postList);
-					free(ambig);
-					free(sleaves);
-					free(optional);
-					free(vmax);
-					free(rpl_comp);
-
+					// printf(" p->next is null. \n");
 					return 0;
 				}
 			} else {
-				//printf(" ---=-- Empty Component: \n");
+				// printf(" ---=-- Empty Component: \n");
 				Rebuilt_Component(p->tree_com, rpl_comp, node_type,
 						node_strings);
 
@@ -1590,39 +1665,63 @@ int Cluster_Containment(struct components *ptr, int r_nodes[], int n_r,
 						input_leaves, in_cluster, super_deg, cps, child_array,
 						n_l, no_break);
 
-				free(postList);
-				free(ambig);
-				free(sleaves);
-				free(optional);
-				free(rpl_comp);
-
 				return res;
 			}
 		} else {
-			//printf("   Unstable case:\n");
+			// printf("   Unstable case:\n");
 			int no_rets_in = 0;
 			int no_rets_out = 0;
-			int *unstb_rets_in = (int *) calloc(n_r, sizeof(int));
-			int *unstb_rets_out = (int *) calloc(n_r, sizeof(int));
+			int no_in_lfb = 0;
+			int no_out_lfb = 0;
 
-			Find_UnStable(p->tree_com, input_leaves, no1, unstb_rets_in, &no_rets_in,
-							unstb_rets_out, &no_rets_out, node_type, inner_flag, lf_below);
+			// unstb_ret = Find_UnStable0(p->tree_com, node_type, inner_flag,
+			// 		lf_below);
+			// if(unstb_ret!=-1)
+			// 	printf("  Unstable ret node %s\n", node_strings[unstb_ret]);
+
+			int unstb_rets_in[n_r];
+			int unstb_rets_out[n_r];
+			int lf_in_comp[no1];
+			int lf_out_comp[no1];
+
+			Find_UnStable(p->tree_com, input_leaves, no1, unstb_rets_in,
+					&no_rets_in, unstb_rets_out, &no_rets_out, node_type,
+					inner_flag, lf_below, lf_in_comp, &no_in_lfb, lf_out_comp, &no_out_lfb);
 
 			// printf("   no_rets_in: %d; no_rets_out: %d\n", no_rets_in,
 			// 		no_rets_out);
-
+			//
+			// // check whether leaves below current component equals to B
+			if(no_in_lfb == no1){
+				return 50;
+			}
+			//
 			if (no_rets_in > 0 || no_rets_out > 0) {
-				whole_copy = Make_Current_Network(cps);
+				// printf("  original network 1:\n");
+				// // Print_Comp_Revised(p->tree_com, node_strings);
+				// printf("comp size: %d, no of tree node: %d, no_in_lfb: %d\n", p->size,
+				// 		p->no_tree_node, no_in_lfb);
+				// printf("  making a copy \n");
+
+				struct components network[n_r + 1];
+				int tree_size = 0;
+				p1 = cps;
+				while (p1 != NULL) {
+					tree_size += p1->size;
+					p1 = p1->next;
+				}
+				struct arb_tnode trees[tree_size];
+				int tree_index = 0;
+				Make_Current_Network((cps), n_r + 1, network, trees, &tree_index);
+				whole_copy = &network[0];
+
 				p1 = whole_copy;
 				while (p1->ret_node != p->ret_node)
 					p1 = p1->next;
 
-				// printf("  original network 1: %s \n");
-				// Print_Comp_Revised(p->tree_com, node_strings);
-
-				lf_below1 = (int *) calloc(no_nodes, sizeof(int));
-				inner_flag1 = (int *) calloc(no_nodes, sizeof(int));
-				super_deg1 = (int *) calloc(no_nodes, sizeof(int));
+				int lf_below1[no_nodes];
+				int inner_flag1[no_nodes];
+				int super_deg1[no_nodes];
 
 				for (i = 0; i < no_nodes; i++) {
 					inner_flag1[i] = inner_flag[i];
@@ -1632,7 +1731,6 @@ int Cluster_Containment(struct components *ptr, int r_nodes[], int n_r,
 
 				for (i = 0; i < no_rets_in; i++) {
 					unstb_ret = unstb_rets_in[i];
-					// printf("  unstable node to be removed: %s \n", node_strings[unstb_ret]);
 					if (inner_flag[unstb_ret] == CROSS) {
 						inner_flag[unstb_ret] = INNER;
 						inner_flag1[unstb_ret] = REVISED;
@@ -1644,6 +1742,11 @@ int Cluster_Containment(struct components *ptr, int r_nodes[], int n_r,
 					}
 					Modify(p, p1, node_type, unstb_ret);
 				}
+				// printf("after 1st revision\n");
+				// Print_Comp_Revised(p->tree_com, node_strings);
+				// Print_Comp_Revised(p1->tree_com, node_strings);
+				// printf("comp size: %d, no of tree node: %d, no_out_lfb: %d\n", p1->size,
+				// 		p1->no_tree_node, no_out_lfb);
 
 				for (i = 0; i < no_rets_out; i++) {
 					unstb_ret = unstb_rets_out[i];
@@ -1658,12 +1761,17 @@ int Cluster_Containment(struct components *ptr, int r_nodes[], int n_r,
 					}
 					Modify(p1, p, node_type, unstb_ret);
 				}
+				// printf("after 2nd revision\n");
+				// Print_Comp_Revised(p->tree_com, node_strings);
+				// Print_Comp_Revised(p1->tree_com, node_strings);
+				// printf("comp size: %d, no of tree node: %d, no_out_lfb: %d\n", p1->size,
+				// 		p1->no_tree_node, no_out_lfb);
 
 				*no_break = *no_break + 1;
 
-				//printf("split branch1----------\n");
-				input_leaves_orig = (int *) calloc(no1, sizeof(int));
-				in_cluster_orig = (int *) calloc(n_l, sizeof(int));
+				// printf("split branch1----------\n");
+				int input_leaves_orig[no1];
+				int in_cluster_orig[n_l];
 				for (i = 0; i < n_l; i++) {
 					in_cluster_orig[i] = in_cluster[i];
 				}
@@ -1671,29 +1779,97 @@ int Cluster_Containment(struct components *ptr, int r_nodes[], int n_r,
 					input_leaves_orig[i] = input_leaves[i];
 				}
 				no1_1 = no1;
-				res = Cluster_Containment(p, r_nodes, n_r, no_nodes, node_type,
-						inner_flag, lf_below, node_strings, no1, input_leaves,
-						in_cluster, super_deg, cps, child_array, n_l, no_break);
 
-				if (res == 0) {
-					//printf("split branch2----------\n");
-					if (super_deg1[unstb_ret] == 1)
-						inner_flag1[unstb_ret] = INNER;
-					else
-						inner_flag1[unstb_ret] = CROSS;
+				if(no_in_lfb > 0){
+					/* replace the current component by a single leaf */
+					for (i = 0; i < n_r; i++) {
+						if (lf_below[r_nodes[i]] == lf_in_comp[0]){
+							// printf("Replace reticulation node %s by null, orig: %s \n", node_strings[r_nodes[i]], node_strings[lf_below[r_nodes[i]]]);
+							lf_below[r_nodes[i]] = -2;
+						}
+					}
+					// printf("Replace reticulation node %s by %s\n", node_strings[p->ret_node], node_strings[lf_in_comp[0]]);
+					lf_below[p->ret_node] = lf_in_comp[0];
 
-					res = Cluster_Containment(p1, r_nodes, n_r, no_nodes,
-							node_type, inner_flag1, lf_below1, node_strings,
-							no1_1, input_leaves_orig, in_cluster_orig,
-							super_deg1, whole_copy, child_array, n_l, no_break);
+					// Exclude cross-reticulation nodes whose visible leaves are in the input
+					for (i = 0; i < no_rets_in; i++) {
+						lf_below[unstb_rets_in[i]] = -2;
+					}
+				}
+				if(no_in_lfb > 1){
+					/* decrease B */
+					// printf("decrease input cluster\n");
+					int input_leaves1[no1];
+					nlf_kept = 0;
+					for (i = 0; i < no1; i++) {
+						if (Is_In(input_leaves[i], lf_in_comp, no_in_lfb) == -1) {
+							input_leaves1[nlf_kept++] = input_leaves[i];
+						}
+					}
+					input_leaves1[nlf_kept++] = lf_in_comp[0];
+					no1 = nlf_kept;
+
+					/* revise in_cluster */
+					int in_cluster1[n_l];
+					for (i = 0; i < n_l; i++) {
+						in_cluster1[i] = in_cluster[i];
+						if (Is_In(i, input_leaves1, no1) == -1) {
+							in_cluster1[i] = 0;
+						}
+					}
+					res = Cluster_Containment(p->next, r_nodes, n_r, no_nodes,
+							node_type, inner_flag, lf_below, node_strings, no1,
+							input_leaves1, in_cluster1, super_deg, cps,
+							child_array, n_l, no_break);
+				}
+				else{
+					// printf("keep original input cluster\n");
+					res = Cluster_Containment(p->next, r_nodes, n_r, no_nodes,
+							node_type, inner_flag, lf_below, node_strings, no1,
+							input_leaves, in_cluster, super_deg, cps,
+							child_array, n_l, no_break);
 				}
 
-				free(lf_below1);
-				free(inner_flag1);
-				free(super_deg1);
-				free(input_leaves_orig);
-				free(in_cluster_orig);
-				Destroy_Network(whole_copy);
+				if (res == 0) {
+					// printf("split branch2----------\n");
+					for (i = 0; i < no_rets_in; i++) {
+						unstb_ret = unstb_rets_in[i];
+						if (super_deg1[unstb_ret] == 1)
+							inner_flag1[unstb_ret] = INNER;
+						else
+							inner_flag1[unstb_ret] = CROSS;
+					}
+
+					for (i = 0; i < no_rets_out; i++) {
+						unstb_ret = unstb_rets_out[i];
+						if (super_deg1[unstb_ret] == 1)
+							inner_flag1[unstb_ret] = INNER;
+						else
+							inner_flag1[unstb_ret] = CROSS;
+					}
+
+					if(no_out_lfb > 0){
+						/* replace the current component by a single leaf */
+						for (i = 0; i < n_r; i++) {
+							if (lf_below1[r_nodes[i]] == lf_out_comp[0]){
+									// printf("Replace reticulation node %s by null, orig: %s \n", node_strings[r_nodes[i]], node_strings[lf_below1[r_nodes[i]]]);
+								lf_below1[r_nodes[i]] = -2;
+							}
+						}
+						// printf("Replace reticulation node %s by %s\n", node_strings[p1->ret_node], node_strings[lf_out_comp[0]]);
+						lf_below1[p1->ret_node] = lf_out_comp[0];
+
+						// Exclude cross-reticulation nodes whose visible leaves are not in the input
+						for (i = 0; i < no_rets_out; i++) {
+							lf_below1[unstb_rets_out[i]] = -2;
+						}
+					}
+
+					res = Cluster_Containment(p1->next, r_nodes, n_r, no_nodes, node_type,
+						inner_flag1, lf_below1, node_strings, no1_1,
+						input_leaves_orig, in_cluster_orig, super_deg1,
+						whole_copy, child_array, n_l, no_break);
+				}
 
 				return res;
 			} else {
@@ -1738,7 +1914,7 @@ void Print_Network(struct network *net) {
  */
 void Is_Cluster(int input_leaves[], int r, unsigned int res1[],
 		unsigned int res2[], int *no_res, struct network *net1,
-		struct network *net2) {
+		struct network *net2, int tree_size1, int tree_size2) {
 	int size = max((*net1).no_nodes, (*net2).no_nodes);
 	int inner_flag[size], lf_below[size], super_deg[size];
 	struct components *cps1, *cps2, *p1, *p2;
@@ -1752,18 +1928,30 @@ void Is_Cluster(int input_leaves[], int r, unsigned int res1[],
 		BITSET(res2, *no_res);
 	} else {
 		int *in_cluster = (int *) calloc(net1->n_l, sizeof(int));
+		// int in_cluster[net1->n_l];
 		for (j = 0; j < r; j++) {
 			in_cluster[input_leaves[j]] = 1;
 		}
 
-		//printf("\ncheck whether this cluster is in the 1st network\n   ");
+		// printf("\ncheck whether this cluster is in the 1st network\n   ");
 		no_break = 0;
 		for (j = 0; j < (*net1).no_nodes; j++) {
 			inner_flag[j] = net1->inner_flag[j];
 			lf_below[j] = net1->lf_below[j];
 			super_deg[j] = net1->super_deg[j];
 		}
-		cps1 = Make_Current_Network((net1->all_cps));
+
+		// printf("Copy the 1st network\n   ");
+		struct components network1[net1->n_r + 1];
+		struct arb_tnode trees1[tree_size1];
+		int tree_index1 = 0;
+		// cps1 = Make_Current_Network((net1->all_cps));
+		Make_Current_Network((net1->all_cps), net1->n_r + 1, network1, trees1,
+				&tree_index1);
+		cps1 = &network1[0];
+		// Print_Comp_Revised(cps1->tree_com, net1->node_strings);
+		// printf("comp size: %d, no of tree node: %d\n", cps1->size,
+		// 		cps1->no_tree_node);
 		p1 = cps1;
 		if (net1->n_r > 0) {
 			while (net1->node_type[p1->ret_node] != ROOT
@@ -1772,23 +1960,31 @@ void Is_Cluster(int input_leaves[], int r, unsigned int res1[],
 				p1 = p1->next;
 			}
 		}
+		// printf("Run CCP\n   ");
 		res = Cluster_Containment(p1, net1->r_nodes, net1->n_r, net1->no_nodes,
 				net1->node_type, inner_flag, lf_below, net1->node_strings, r,
 				input_leaves, in_cluster, super_deg, cps1, net1->child_array,
 				net1->n_l, &no_break);
-		Destroy_Network(cps1);
 		if (res > 0) {
 			BITSET(res1, *no_res);
 		}
-
-		//printf("\ncheck whether this cluster is in the 2nd network\n   ");
+		// printf("\ncheck whether this cluster is in the 2nd network\n   ");
 		no_break = 0;
 		for (j = 0; j < (*net2).no_nodes; j++) {
 			inner_flag[j] = net2->inner_flag[j];
 			lf_below[j] = net2->lf_below[j];
 			super_deg[j] = net2->super_deg[j];
 		}
-		cps2 = Make_Current_Network((net2->all_cps));
+		// cps2 = Make_Current_Network((net2->all_cps));
+		struct components network2[net2->n_r + 1];
+		struct arb_tnode trees2[tree_size2];
+		int tree_index2 = 0;
+		Make_Current_Network((net2->all_cps), net2->n_r + 1, network2, trees2,
+				&tree_index2);
+		cps2 = &network2[0];
+		// Print_Comp_Revised(cps2->tree_com, net2->node_strings);
+		// printf("comp size: %d, no of tree node: %d\n", cps2->size,
+		// 		cps2->no_tree_node);
 		p2 = cps2;
 		if (net2->n_r > 0) {
 			while (net2->node_type[p2->ret_node] != ROOT
@@ -1801,14 +1997,13 @@ void Is_Cluster(int input_leaves[], int r, unsigned int res1[],
 				net2->node_type, inner_flag, lf_below, net2->node_strings, r,
 				input_leaves, in_cluster, super_deg, cps2, net2->child_array,
 				net2->n_l, &no_break);
-		Destroy_Network(cps2);
+
 		if (res > 0) {
 			BITSET(res2, *no_res);
 		}
 		free(in_cluster);
 	}
 	*no_res += 1;
-
 	return;
 }
 
@@ -1934,9 +2129,14 @@ void Preprocess_Network(char *arg, struct network *net) {
 		x = Is_Inner_Revised(r_nodes[0], parent_array, node_type, no_nodes);
 		inner_flag[r_nodes[0]] = x;
 		(*all_cps).inner = x;
-		(*all_cps).tree_com = (struct arb_tnode *) malloc(
-				sizeof(struct arb_tnode));
+		(*all_cps).size = 1;
+		(*all_cps).tree_com = (struct arb_tnode *) malloc(sizeof(struct arb_tnode));
 		((*all_cps).tree_com)->label = child_array[r_nodes[0]]->leaf;
+		if(node_type[child_array[r_nodes[0]]->leaf]==RET){
+			(*all_cps).no_tree_node = 0;
+		}else{
+			(*all_cps).no_tree_node = 1;
+		}
 		((*all_cps).tree_com)->flag = 0;
 		((*all_cps).tree_com)->no_children = 0;
 		for (i = i; i < MAXDEGREE; i++)
@@ -1947,18 +2147,18 @@ void Preprocess_Network(char *arg, struct network *net) {
 		for (i = 1; i < n_r; i++) {
 			x = Is_Inner_Revised(r_nodes[i], parent_array, node_type, no_nodes);
 			inner_flag[r_nodes[i]] = x;
-			Add_Component(all_cps, r_nodes[i], child_array[r_nodes[i]]->leaf,
-					x);
+			Add_Component(all_cps, r_nodes[i], child_array[r_nodes[i]]->leaf, x, node_type);
 		}
 
 		/* treat root as CROSS node, why??? */
-		Add_Component(all_cps, root, root, CROSS);
+		Add_Component(all_cps, root, root, CROSS, node_type);
 	} else {
 		(*all_cps).ret_node = root;
 		inner_flag[root] = CROSS;
 		(*all_cps).inner = CROSS;
-		(*all_cps).tree_com = (struct arb_tnode *) malloc(
-				sizeof(struct arb_tnode));
+		(*all_cps).size = 1;
+		(*all_cps).no_tree_node = 1;
+		(*all_cps).tree_com = (struct arb_tnode *) malloc(sizeof(struct arb_tnode));
 		((*all_cps).tree_com)->label = root;
 		((*all_cps).tree_com)->flag = 0;
 		((*all_cps).tree_com)->no_children = 0;
@@ -1974,11 +2174,16 @@ void Preprocess_Network(char *arg, struct network *net) {
 	//printf("build components.\n");
 	p = all_cps;
 	while (p != NULL) {
-		Build_Comp_Revised(p->tree_com, child_array, node_type, no_nodes);
+		Build_Comp_Revised(p->tree_com, child_array, node_type, no_nodes, &p->size,
+				&p->no_tree_node);
 		for (i = 0; i < n_r; i++) {
 			super_deg[r_nodes[i]] = super_deg[r_nodes[i]]
 					+ Is_In_Comp(p->tree_com, r_nodes[i]);
 		}
+
+		// Print_Comp_Revised(p->tree_com, node_strings);
+		// printf("---size %d--no_tree_node %d\n", p->size, p->no_tree_node);
+
 		p = p->next;
 	}
 
@@ -2079,17 +2284,26 @@ void ksub_next(int n, int k, int a[]) {
 }
 
 void Subset_CCP(int k, int *index, int no, unsigned int *res1,
-		unsigned int *res2, struct network *net1, struct network *net2) {
+		unsigned int *res2, struct network *net1, struct network *net2, int tree_size1, int tree_size2) {
 	int j;
 	int *input_leaves = (int *) calloc(k, sizeof(int));
+	// int input_leaves[k];
+	int i;	// for debug printing
 
 	i4vec_indicator0(k, input_leaves);
-	Is_Cluster(input_leaves, k, res1, res2, index, net1, net2);
+	Is_Cluster(input_leaves, k, res1, res2, index, net1, net2, tree_size1,
+			tree_size2);
 
 	//printf("\nfrom 2nd k-subset\n");
 	for (j = 1; j < no; j++) {
 		ksub_next(net1->n_l, k, input_leaves);
-		Is_Cluster(input_leaves, k, res1, res2, index, net1, net2);
+		// printf("\nInitial input leaves\n   ");
+		// for (i = 0; i < k; i++) {
+		// 	printf("%d ", input_leaves[i]);
+		// }
+		// printf("\n");
+		Is_Cluster(input_leaves, k, res1, res2, index, net1, net2, tree_size1,
+				tree_size2);
 	}
 	free(input_leaves);
 	return;
@@ -2101,6 +2315,8 @@ double Find_Cluster_Distance(char *arg1, char *arg2) {
 	unsigned int *res1, *res2, *diff;
 	unsigned int no_res, rlen;
 	float dist;
+	int tree_size1 = 0, tree_size2 = 0;
+	struct components *p1;
 
 	/* network processing */
 	//printf("preprocess 1st network: \n");
@@ -2127,6 +2343,18 @@ double Find_Cluster_Distance(char *arg1, char *arg2) {
 		}
 	}
 
+	p1 = net1.all_cps;
+	while (p1 != NULL) {
+		tree_size1 += p1->size;
+		p1 = p1->next;
+	}
+
+	p1 = net2.all_cps;
+	while (p1 != NULL) {
+		tree_size2 += p1->size;
+		p1 = p1->next;
+	}
+
 	no_res = (1U << net1.n_l);
 	rlen = BITNSLOTS(no_res);
 	res1 = (unsigned int *) calloc(rlen, sizeof(unsigned int));
@@ -2136,7 +2364,8 @@ double Find_Cluster_Distance(char *arg1, char *arg2) {
 	index = 0;
 	for (k = 1; k < net1.n_l; k++) {
 		int no = nChoosek(net1.n_l, k);
-		Subset_CCP(k, &index, no, res1, res2, &net1, &net2);
+		Subset_CCP(k, &index, no, res1, res2, &net1, &net2, tree_size1,
+				tree_size2);
 	}
 
 	dist = 0;
@@ -2146,6 +2375,9 @@ double Find_Cluster_Distance(char *arg1, char *arg2) {
 	}
 	dist = (float) dist / 2;
 
+	// printf("no_res: %d\n", no_res);
+	// printf("res1: %d\n", res1);
+	// printf("res2: %d\n", res2);
 	/*	Free memory at the end */
 	free(res1);
 	free(res2);
@@ -2159,7 +2391,7 @@ double Find_Cluster_Distance(char *arg1, char *arg2) {
 
 void main(int argc, char *argv[]) {
 	if (argc != 3) {
-		printf("Command: ./a.out network_file1_name network_file2_name\n");
+		printf("Command: PROGRAM(./srfd) network_file1_name network_file2_name\n");
 		exit(10);
 	}
 	if (strcmp(argv[1], argv[2]) == 0) {

@@ -930,7 +930,7 @@ void Find_UnStable(struct arb_tnode *comp_ptr, int input_leaves[], int no_leaf,
 		else if (node_type[comp_ptr->label] == RET) {
 			if (inner_flag[comp_ptr->label] == CROSS) {
 				int leaf = lf_below[comp_ptr->label];
-				if (leaf==-2) return;
+				if (leaf == -2) return;
 				if (Is_In(leaf, input_leaves, no_leaf) == 1) {
 					unstb_rets_in[*no_rets_in] = comp_ptr->label;
 					*no_rets_in = *no_rets_in + 1;
@@ -1566,10 +1566,14 @@ int Cluster_Containment(struct components *ptr, int r_nodes[], int n_r,
 		int no_in_lfb = 0;
 		int no_out_lfb = 0;
 
-		int *unstb_rets_in = (int *) calloc(n_r, sizeof(int));
-		int *unstb_rets_out = (int *) calloc(n_r, sizeof(int));
-		int *lf_in_comp = (int *) calloc(no1, sizeof(int));
-		int *lf_out_comp = (int *) calloc(no1, sizeof(int));
+		int unstb_rets_in[n_r];
+		int unstb_rets_out[n_r];
+		int lf_in_comp[no1];
+		int lf_out_comp[no1];
+		// int *unstb_rets_in = (int *) calloc(n_r, sizeof(int));
+		// int *unstb_rets_out = (int *) calloc(n_r, sizeof(int));
+		// int *lf_in_comp = (int *) calloc(no1, sizeof(int));
+		// int *lf_out_comp = (int *) calloc(no1, sizeof(int));
 
 		Find_UnStable(p->tree_com, input_leaves, no1, unstb_rets_in,
 				&no_rets_in, unstb_rets_out, &no_rets_out, node_type,
@@ -2016,8 +2020,8 @@ void main(int argc, char *argv[]) {
 					+ Is_In_Comp(p->tree_com, r_nodes[i]);
 		}
 
-		Print_Comp_Revised(p->tree_com, node_strings);
-		printf("---size %d--no_tree_node %d\n", p->size, p->no_tree_node);
+		// Print_Comp_Revised(p->tree_com, node_strings);
+		// printf("---size %d--no_tree_node %d\n", p->size, p->no_tree_node);
 
 		p = p->next;
 	}
