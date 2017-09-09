@@ -130,6 +130,7 @@ struct arb_tnode *Search_Revised(struct arb_tnode *tree, int node) {
 	return NULL;
 }
 
+// Find whether an element is in an array
 int Is_In(int elt, int Ambig[], int n) {
 	int i;
 
@@ -341,6 +342,7 @@ void Initiallize(struct arb_tnode *tree) {
 		return;
 }
 
+// Find the size of the tree component
 void PostTrans_Revised(struct arb_tnode *tree, struct arb_tnode *PostList[],
 		int *n) {
 	int i, deg;
@@ -529,7 +531,7 @@ int Is_Below(struct arb_tnode *p, int y, int node_type[]) {
 	return 0;
 }
 
-/*determine if all the parents of node is in a component */
+/* Determine if all the parents of node is in a component */
 int Is_Inner_Revised(int node, struct lnode *parent_array[], int node_type[],
 		int no_nodes) {
 	int f, g;
@@ -563,6 +565,7 @@ void Sort_Rets_Revised(int r_nodes[], int n_r, struct lnode *child_array[],
 	int flag = 0;
 	struct lnode *p;
 
+	// Move reticulate nodes just above a single leaf to front
 	j = 0;
 	for (i = 0; i < n_r; i++) {
 		flag = 0;
@@ -571,10 +574,11 @@ void Sort_Rets_Revised(int r_nodes[], int n_r, struct lnode *child_array[],
 			if (node_type[p->leaf] == LEAVE)
 				p = p->next;
 			else {
-				flag = 1;
+				flag = 1;	// There is a nonleaf below this ret node
 				break;
 			}
 		}
+		// exchange ret node i and j
 		if (flag == 0) {
 			u2 = r_nodes[j];
 			r_nodes[j] = r_nodes[i];
@@ -587,15 +591,16 @@ void Sort_Rets_Revised(int r_nodes[], int n_r, struct lnode *child_array[],
 	while (u1 < n_r) {
 		for (i = u1; i < n_r; i++) {
 			u2 = 0;
-			for (j = u1; j < n_r; j++) {
+			// Find whether r_nodes[i] is a parent of some node below it
+			for (j = u1+1; j < n_r; j++) {
 				x = Is_Below_revised(r_nodes[j], r_nodes[i], parent_array,
 						node_type);
-				if (x == 1) {
+				if (x == 1) {	// increase i when r_nodes[i] is a parent of r_nodes[j], or node j is below node i
 					u2 = 1 + u2;
 					break;
 				}
 			}
-			if (u2 == 0) {
+			if (u2 == 0) {		// This reticulate node r_nodes[i] or r_nodes[node1] has no reticulate offspring
 				node1 = i;
 				break;
 			}
@@ -758,6 +763,7 @@ void Replace_Ret_Revised(struct arb_tnode *tree, int inner_flag[],
 					*no_lf = 1 + *no_lf;
 				}
 			} else if (node_type[tree->label] == RET) {
+				if(leaf_below[tree->label] == -2) return;
 				if (inner_flag[tree->label] == INNER) {
 					x = tree->label;
 					tree->label = leaf_below[x];
@@ -1264,7 +1270,7 @@ void Modify1(struct arb_tnode *p, int node_type[], int unstb_ret,
 //				tmp = (p->child)[i];
 //				Destroy_Arbtree(tmp);
 				// printf("delete edge %d\t%d\n", p->label, ptr->label);
-				net_edges[p->label][ptr->label]=0;
+				net_edges[p->label][ptr->label] = 0;
 				(p->child)[i] = NULL;
 				*comp_size = *comp_size - 1;
 			} else {
@@ -1324,7 +1330,7 @@ void Modify(struct components *p, struct components *p1, int node_type[],
 				//tmp = ptr->tree_com;
 				//Destroy_Arbtree(tmp);
 				// printf("delete edge %d\t%d\n", ptr->ret_node, unstb_ret);
-				net_edges[ptr->ret_node][unstb_ret]=0;
+				net_edges[ptr->ret_node][unstb_ret] = 0;
 				ptr->tree_com = NULL;
 				ptr->size = ptr->size - 1;
 			} else {
@@ -1341,7 +1347,7 @@ void Modify(struct components *p, struct components *p1, int node_type[],
 		//tmp = p1->tree_com;
 		//Destroy_Arbtree(tmp);
 		// printf("delete edge1 %d\t%d\n", p1->ret_node, unstb_ret);
-		net_edges1[p1->ret_node][unstb_ret]=0;
+		net_edges1[p1->ret_node][unstb_ret] = 0;
 		p1->tree_com = NULL;
 		p1->size = p1->size - 1;
 	} else {
@@ -1508,6 +1514,7 @@ int Is_Feasible_Node(int parent, int curr_leaf, int indicator, int no_nodes, int
 {
 	int i;
 	int num_parent;
+	int res;
 	int no_children = Count_Child(child_array[parent]);
 	struct lnode* child = child_array[parent];
 	for (i = 0; i < no_children; i++) {
@@ -1519,6 +1526,7 @@ int Is_Feasible_Node(int parent, int curr_leaf, int indicator, int no_nodes, int
 		if (node_type[a_leaf]==RET)
 		{
 			int l_below = lf_below[a_leaf];
+			// printf("l_below %s\n", node_strings[l_below]);
 			if (l_below!=-2 && l_below==curr_leaf) {child = child->next; continue;}
 			num_parent = Count_Parent(a_leaf, parent_array, no_nodes, net_edges);
 			if(num_parent>=2 && l_below==-2) return 1;	// reticulate node that has not been processed
@@ -1531,8 +1539,9 @@ int Is_Feasible_Node(int parent, int curr_leaf, int indicator, int no_nodes, int
 			}
 		}
 		else{ // TREE node, traverse until leaves
-			return Is_Feasible_Node(a_leaf, curr_leaf, indicator, no_nodes, no1, input_leaves, node_type, inner_flag, lf_below, node_strings, child_array,
+			res= Is_Feasible_Node(a_leaf, curr_leaf, indicator, no_nodes, no1, input_leaves, node_type, inner_flag, lf_below, node_strings, child_array,
 				parent_array, net_edges);
+			if(res==0) return 0;
 		}
 		// printf("Go to next child\n");
 		child = child->next;
@@ -1852,7 +1861,7 @@ int Cluster_Containment(struct components *ptr, int r_nodes[], int n_r,
 				lf_below1[i] = lf_below[i];
 				super_deg1[i] = super_deg[i];
 				for(j = 0; j < no_nodes; j++){
-					net_edges1[i][j]=net_edges[i][j];
+					net_edges1[i][j] = net_edges[i][j];
 				}
 			}
 
@@ -1861,7 +1870,7 @@ int Cluster_Containment(struct components *ptr, int r_nodes[], int n_r,
 				unstb_ret = unstb_rets_in[i];
 				if (inner_flag[unstb_ret] == CROSS) {
 					inner_flag[unstb_ret] = INNER;
-					inner_flag1[unstb_ret] = REVISED;
+					//inner_flag1[unstb_ret] = REVISED;
 					super_deg1[unstb_ret] = super_deg[unstb_ret] - 1; /* exclude current component from new network*/
 					super_deg[unstb_ret] = 1; /* remove all parents in other comps. */
 					if (super_deg1[unstb_ret] == 1){
@@ -1877,7 +1886,7 @@ int Cluster_Containment(struct components *ptr, int r_nodes[], int n_r,
 			for (i = 0; i < no_rets_out; i++) {
 				unstb_ret = unstb_rets_out[i];
 				if (inner_flag[unstb_ret] == CROSS) {
-					inner_flag[unstb_ret] = REVISED;
+					//inner_flag[unstb_ret] = REVISED;
 					inner_flag1[unstb_ret] = INNER;
 					super_deg[unstb_ret] = super_deg[unstb_ret] - 1;
 					super_deg1[unstb_ret] = 1; /* remove all parents in other comps. */

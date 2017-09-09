@@ -716,6 +716,7 @@ void Replace_Ret_Revised(struct arb_tnode *tree, int inner_flag[],
 					*no_lf = 1 + *no_lf;
 				}
 			} else if (node_type[tree->label] == RET) {
+				if(leaf_below[tree->label] == -2) return;
 				if (inner_flag[tree->label] == INNER) {
 					x = tree->label;
 					tree->label = leaf_below[x];
