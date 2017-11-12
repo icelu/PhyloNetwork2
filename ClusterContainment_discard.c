@@ -75,25 +75,6 @@ struct components {
 	struct components *next;
 };
 
-// Used to keep track of sorted index
-struct temp_node{
-	int pnode;
-	int value;
-	int index;
-};
-
-int tnode_comparator(const void *v1, const void *v2)
-{
-    const struct temp_node *p1 = (struct temp_node *)v1;
-    const struct temp_node *p2 = (struct temp_node *)v2;
-    if (p1->value > p2->value)
-        return -1;
-    else if (p1->value < p2->value)
-        return +1;
-    else
-        return 0;
-}
-
 struct lnode *ListExtend(struct lnode *list, int lf) {
 	struct lnode *p, *q;
 	p = (struct lnode*) malloc(sizeof(struct lnode));
@@ -592,7 +573,7 @@ void Sort_Rets_Revised(int r_nodes[], int n_r, struct lnode *child_array[],
 		for (i = u1; i < n_r; i++) {
 			u2 = 0;
 			// Find whether r_nodes[i] is a parent of some node below it
-			for (j = u1+1; j < n_r; j++) {
+			for (j = u1; j < n_r; j++) {
 				x = Is_Below_revised(r_nodes[j], r_nodes[i], parent_array,
 						node_type);
 				if (x == 1) {	// increase i when r_nodes[i] is a parent of r_nodes[j], or node j is below node i
@@ -605,132 +586,14 @@ void Sort_Rets_Revised(int r_nodes[], int n_r, struct lnode *child_array[],
 				break;
 			}
 		}
-		node2 = r_nodes[u1];
-		r_nodes[u1] = r_nodes[node1];
-		r_nodes[node1] = node2;
+		if (node1 != u1){
+			node2 = r_nodes[u1];
+			r_nodes[u1] = r_nodes[node1];
+			r_nodes[node1] = node2;
+			// printf("exchange %d and %d\n", u1, node1);
+		}
 		u1 = u1 + 1;
 	} /* end while */
-}
-
-
-int Is_Tree_Component(int rnode, int node_type[], struct lnode *child_array[]){
-	struct lnode *p;
-	p = child_array[rnode];
-	int res=0;
-	while (p != NULL) {
-		if (node_type[p->leaf] == LEAVE){
-		}
-		else if (node_type[p->leaf] == RET){ // There is a reticulate node below current reticulate node
-			return 1;
-		}
-		else // if(node_type[p->leaf] == TREE)
-		{
-			res= Is_Tree_Component(p->leaf, node_type, child_array);
-			if (res==1) return 1;
-		}
-		p = p->next;
-	}
-		return res;
-}
-
-
-void Count_Ret_Child(int rnode, int *count, int *flag, int *size, int n_r, int orig_rnodes[], int node_type[], struct lnode *child_array[]){
-	struct lnode *p;
-	p = child_array[rnode];
-	while (p != NULL) {
-		if (node_type[p->leaf] == LEAVE){
-			*size +=1;
-		}
-		else if (node_type[p->leaf] == RET){
-			*count += 1;
-			if (Is_In(p->leaf, orig_rnodes, n_r)==-1)
-			{
-				*flag+=1;
-			}
-		}
-		else // if(node_type[p->leaf] == TREE)
-		{
-			*size +=1;
-			Count_Ret_Child(p->leaf, count, flag, size, n_r, orig_rnodes, node_type, child_array);
-		}
-		p = p->next;
-	}
-		return;
-}
-
-int Is_Empty(int n_r, int r_nodes[]){
-	int i;
-	for (i = 0; i < n_r; i++) {
-		if (r_nodes[i]!=-2) return 0;
-	}
-	return 1;
-}
-
-void Sort_Rets_By_Level(int orig_rnodes[], int r_nodes[], int n_r, struct lnode *child_array[],
-		struct lnode *parent_array[], int node_type[], int no_nodes) {
-	int i, j, u1, u2, x, y, node1, node2;
-	int flag = 0;
-	int count = 0;
-	int k = 0;
-	int size = 0;
-	struct lnode *p;
-
-	// Move reticulate nodes just above a single leaf to front
-	j = 0;
-	for (i = 0; i < n_r; i++) {
-		flag = 0;
-		if (orig_rnodes[i]==-2) continue;
-		p = child_array[orig_rnodes[i]];
-		while (p != NULL) {
-			if (node_type[p->leaf] == LEAVE)
-				p = p->next;
-			else {
-				flag = 1;	// There is a nonleaf below this ret node
-				break;
-			}
-		}
-		if (flag == 0) {
-			r_nodes[j] = orig_rnodes[i];
-			orig_rnodes[i] = -2;	// not consider this node later
-			j = j + 1;
-		}
-	}
-
-	// Moving reticulate nodes with only tree nodes
-	for (i = 0; i < n_r; i++) {
-		if (orig_rnodes[i]==-2) continue;
-		flag =  Is_Tree_Component(orig_rnodes[i], node_type, child_array);
-		if (flag == 0) {
-			r_nodes[j] = orig_rnodes[i];
-			orig_rnodes[i] = -2;
-			j = j + 1;
-		}
-	}
-
-	// Moving reticulate nodes one level higher
-	while(Is_Empty(n_r, orig_rnodes)==0){
-		struct temp_node level_ret[n_r]; 	// Temporily store all reticulate codes in the same level for sorting
-		k=0;	// store the real size of the array
-		for (i = 0; i < n_r; i++) {
-			if (orig_rnodes[i]==-2) continue;
-			count = 0;	// Count the number of reticulate children
-			flag = 0;	// Count the number of reticulate children which have been resolved
-			size = 0;
-			Count_Ret_Child(orig_rnodes[i], &count, &flag, &size, n_r, orig_rnodes, node_type, child_array);
-			if (flag > 0 && flag == count) {
-				struct temp_node tnode;
-				tnode.index = i;
-				tnode.value = size;
-				tnode.pnode = orig_rnodes[i];
-				level_ret[k++] = tnode;
-			}
-		} // for loop -- finish one level
-		qsort(level_ret, k, sizeof(struct temp_node), tnode_comparator);
-		for (i = 0; i < k; i++){
-			r_nodes[j++] = level_ret[i].pnode;
-			orig_rnodes[level_ret[i].index] = -2;	//update later to avoid handling reticulate nodes at a higher level
-		}
-	}
 }
 
 
@@ -1539,9 +1402,9 @@ int Is_Feasible_Node(int parent, int curr_leaf, int indicator, int no_nodes, int
 			}
 		}
 		else{ // TREE node, traverse until leaves
-			res= Is_Feasible_Node(a_leaf, curr_leaf, indicator, no_nodes, no1, input_leaves, node_type, inner_flag, lf_below, node_strings, child_array,
+			res = Is_Feasible_Node(a_leaf, curr_leaf, indicator, no_nodes, no1, input_leaves, node_type, inner_flag, lf_below, node_strings, child_array,
 				parent_array, net_edges);
-			if(res==0) return 0;
+			if(res == 0) return 0;
 		}
 		// printf("Go to next child\n");
 		child = child->next;
@@ -1556,7 +1419,7 @@ int To_Run_Network(int unstb_ret, int indicator, int no_nodes, int no1, int inpu
 	int to_run=1;
 	int curr_leaf = lf_below[unstb_ret];
 	struct lnode* parent = parent_array[unstb_ret];
-	while(parent!=NULL  && node_type[parent->leaf]!=ROOT && to_run == 1){
+	while(parent!=NULL && to_run == 1){
 		// printf("parent %s\n", node_strings[parent->leaf]);
 		if(net_edges[parent->leaf][unstb_ret]==0){
 			parent = parent->next;
@@ -1629,7 +1492,6 @@ int Cluster_Containment(struct components *ptr, int r_nodes[], int n_r,
 				}
 			}
 		}
-
 		if (no_slf > 0) {
 			if(no_opt == 0 && no_slf == 1 ){	// There are only one stable leaf below the component
 				if (no1 == 1 && sleaves[0] == input_leaves[0]){
@@ -1870,7 +1732,7 @@ int Cluster_Containment(struct components *ptr, int r_nodes[], int n_r,
 				unstb_ret = unstb_rets_in[i];
 				if (inner_flag[unstb_ret] == CROSS) {
 					inner_flag[unstb_ret] = INNER;
-					//inner_flag1[unstb_ret] = REVISED;
+					// inner_flag1[unstb_ret] = REVISED;
 					super_deg1[unstb_ret] = super_deg[unstb_ret] - 1; /* exclude current component from new network*/
 					super_deg[unstb_ret] = 1; /* remove all parents in other comps. */
 					if (super_deg1[unstb_ret] == 1){
@@ -1886,7 +1748,7 @@ int Cluster_Containment(struct components *ptr, int r_nodes[], int n_r,
 			for (i = 0; i < no_rets_out; i++) {
 				unstb_ret = unstb_rets_out[i];
 				if (inner_flag[unstb_ret] == CROSS) {
-					//inner_flag[unstb_ret] = REVISED;
+					// inner_flag[unstb_ret] = REVISED;
 					inner_flag1[unstb_ret] = INNER;
 					super_deg[unstb_ret] = super_deg[unstb_ret] - 1;
 					super_deg1[unstb_ret] = 1; /* remove all parents in other comps. */
@@ -1973,6 +1835,8 @@ int Cluster_Containment(struct components *ptr, int r_nodes[], int n_r,
 			res = 0;
 			if (run_1st == 0 && run_2nd == 0)
 			{
+				// printf("not a cluster!\n\n");
+				// printf("The no. of rets eliminated: %d\n", no_break);
 				return 10;	// not a cluster in either network
 			}
 			if (run_1st == 1)
@@ -2009,7 +1873,7 @@ int Cluster_Containment(struct components *ptr, int r_nodes[], int n_r,
 							child_array, parent_array, net_edges, n_l, no_break);
 				}
 			}
-			if (res != 50  && run_2nd == 1) {
+			if (res != 50 && run_2nd == 1) {
 				// Run on 2nd split network
 				res = Cluster_Containment(p1->next, r_nodes, n_r, no_nodes, node_type,
 					inner_flag1, lf_below1, node_strings, no1_1,
@@ -2038,7 +1902,7 @@ int main(int argc, char *argv[]) {
 	int *input_leaves; /* the label of input leaves in the network */
 
 	FILE *ntk_ptr;
-	int *node_type, *r_nodes, *orig_rnodes;
+	int *node_type, *r_nodes;
 	int root;
 	int start[MAXEDGE], end[MAXEDGE];
 	char *node_strings[MAXSIZE];
@@ -2199,12 +2063,10 @@ int main(int argc, char *argv[]) {
 		net_edges[start[i]][end[i]]=1;
 	}
 
-	orig_rnodes = (int *) calloc(n_r, sizeof(int));
 	r_nodes = (int *) calloc(n_r, sizeof(int));
 	j = 0;
 	for (i = 0; i < no_nodes; i++) {
 		if (node_type[i] == RET) {
-			orig_rnodes[j] = i;
 			r_nodes[j] = i;
 			j+=1;
 		}
@@ -2213,7 +2075,7 @@ int main(int argc, char *argv[]) {
 	child_array = (struct lnode **) calloc(no_nodes, sizeof(struct lnode*));
 	parent_array = (struct lnode **) calloc(no_nodes, sizeof(struct lnode*));
 	Child_Parent_Inform(child_array, parent_array, no_nodes, start, end, no_edges);
-	Sort_Rets_By_Level(orig_rnodes, r_nodes, n_r, child_array, parent_array, node_type, no_nodes);
+	Sort_Rets_Revised(r_nodes, n_r, child_array, parent_array, node_type, no_nodes);
 
 	inner_flag = (int *) calloc(no_nodes, sizeof(int));
 	for (i = 0; i < no_nodes; i++)

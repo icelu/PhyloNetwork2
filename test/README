@@ -1,0 +1,7 @@
+Test cases to ensure the programs are correct.
+
+For CCP:
+Universal network (with leaves from 5 to 10)
+  All the clusters should be displayed
+On random network
+  Only extracted clusters should be displayed

@@ -1539,9 +1539,9 @@ int Is_Feasible_Node(int parent, int curr_leaf, int indicator, int no_nodes, int
 			}
 		}
 		else{ // TREE node, traverse until leaves
-			res= Is_Feasible_Node(a_leaf, curr_leaf, indicator, no_nodes, no1, input_leaves, node_type, inner_flag, lf_below, node_strings, child_array,
+			res = Is_Feasible_Node(a_leaf, curr_leaf, indicator, no_nodes, no1, input_leaves, node_type, inner_flag, lf_below, node_strings, child_array,
 				parent_array, net_edges);
-			if(res==0) return 0;
+			if(res == 0) return 0;
 		}
 		// printf("Go to next child\n");
 		child = child->next;
@@ -1556,7 +1556,7 @@ int To_Run_Network(int unstb_ret, int indicator, int no_nodes, int no1, int inpu
 	int to_run=1;
 	int curr_leaf = lf_below[unstb_ret];
 	struct lnode* parent = parent_array[unstb_ret];
-	while(parent!=NULL  && node_type[parent->leaf]!=ROOT && to_run == 1){
+	while(parent!=NULL && node_type[parent->leaf]!=ROOT && to_run == 1){
 		// printf("parent %s\n", node_strings[parent->leaf]);
 		if(net_edges[parent->leaf][unstb_ret]==0){
 			parent = parent->next;
@@ -1629,7 +1629,6 @@ int Cluster_Containment(struct components *ptr, int r_nodes[], int n_r,
 				}
 			}
 		}
-
 		if (no_slf > 0) {
 			if(no_opt == 0 && no_slf == 1 ){	// There are only one stable leaf below the component
 				if (no1 == 1 && sleaves[0] == input_leaves[0]){
@@ -1973,6 +1972,8 @@ int Cluster_Containment(struct components *ptr, int r_nodes[], int n_r,
 			res = 0;
 			if (run_1st == 0 && run_2nd == 0)
 			{
+				// printf("not a cluster!\n\n");
+				// printf("The no. of rets eliminated: %d\n", no_break);
 				return 10;	// not a cluster in either network
 			}
 			if (run_1st == 1)
