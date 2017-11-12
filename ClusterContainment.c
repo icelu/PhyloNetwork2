@@ -1556,7 +1556,7 @@ int To_Run_Network(int unstb_ret, int indicator, int no_nodes, int no1, int inpu
 	int to_run=1;
 	int curr_leaf = lf_below[unstb_ret];
 	struct lnode* parent = parent_array[unstb_ret];
-	while(parent!=NULL  && node_type[parent->leaf]!=ROOT && to_run == 1){
+	while(parent!=NULL && to_run == 1){
 		// printf("parent %s\n", node_strings[parent->leaf]);
 		if(net_edges[parent->leaf][unstb_ret]==0){
 			parent = parent->next;

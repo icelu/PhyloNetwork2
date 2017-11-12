@@ -1,9 +1,0 @@
-THINGS TO DO when revising the code:
-
-1. change related code
-2. test on reprentative datasets to ensure the results are correctness
-3. batch test to see the performance improvement
-
-
-Caveat:
-Plan well before large test, to avoid waste in time and effort
